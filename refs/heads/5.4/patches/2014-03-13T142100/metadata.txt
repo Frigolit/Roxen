@@ -1,0 +1,13 @@
+subject: Roxen 5.4: Mysql: Fixed mysql_upgrade use on WIN32.
+from: e362bebdc4647574ff10f7d1732030f2bc32c6ff
+to: 9a35353302f6e98bb4ba517cd28c92e31e2449c9
+originator: wellhardh@roxen.com
+depends: roxen/5.4.54
+restart: true
+
+Mysql: Fixed mysql_upgrade use on WIN32.
+
+Mysqld on WIN32 uses named pipes, so make sure to tell
+mysql_upgrade about it.
+
+Fixes [bug 7007] and [bug 7018].
