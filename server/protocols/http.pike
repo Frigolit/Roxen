@@ -2946,8 +2946,9 @@ void send_result(mapping|void result)
 	      skip = 1;
 	    }
 	  } else {
+	    //  Needs strict equality according to RFC 7233
 	    array(int) since_info = Roxen.parse_since(if_range);
-	    if (!since_info || (since_info[0] < misc->last_modified)) {
+	    if (!since_info || (since_info[0] != misc->last_modified)) {
 	      // Failed to parse since info, or the file has changed.
 	      skip = 1;
 	    }
@@ -3250,7 +3251,7 @@ void got_data(mixed fooid, string s, void|int chained)
 	     misc->host, raw_url);
     }
 
-    string canon_hostport;
+    string canon_host = "*:";
     if (string host = misc->host) {
       // Parse and canonicalize the host header for use in the url
       // used for port matching.
@@ -3259,10 +3260,10 @@ void got_data(mixed fooid, string s, void|int chained)
 	//  IPv6 address
 	sscanf(lower_case(host), "[%s]:%d", host, port);
 	host = Protocols.IPv6.normalize_addr_basic (host) || host;
-	canon_hostport = "[" + host + "]:" + port;
+	canon_host = "[" + host + "]:";
       } else {
 	sscanf(lower_case(host), "%[^:]:%d", host, port);
-	canon_hostport = host + ":" + port;
+	canon_host = host + ":";
       }
       misc->hostname = host;
       misc->port = port;
@@ -3270,11 +3271,15 @@ void got_data(mixed fooid, string s, void|int chained)
 
     if( !conf || !(path = port_obj->path ) ||
 	(sizeof( path ) && !has_prefix(raw_url, path)) ) {
-      // FIXME: port_obj->name & port_obj->default_port are constant
+      // FIXME: port_obj->name & port_obj->port are constant
       // consider caching them?
 
+      // NB: Ignore the port number from the host header here, as
+      //     the client may access us via a load balancing proxy
+      //     or similar on a different port than our actual port.
+      //     cf [bug 7385].
       string port_match_url = (port_obj->url_prefix +
-			       (canon_hostport || ("*:" + port_obj->port)) +
+			       canon_host + port_obj->port +
 			       raw_url);
       conf = port_obj->find_configuration_for_url(port_match_url, this);
 
@@ -3556,8 +3561,9 @@ void got_data(mixed fooid, string s, void|int chained)
 		    skip = 1;
 		  }
 		} else {
+		  //  Needs strict equality according to RFC 7233
 		  array(int) since_info = Roxen.parse_since(if_range);
-		  if (!since_info || (since_info[0] < file->last_modified)) {
+		  if (!since_info || (since_info[0] != file->last_modified)) {
 		    // Failed to parse since info, or the file has changed.
 		    skip = 1;
 		  }

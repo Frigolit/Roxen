@@ -1375,7 +1375,23 @@ string make_absolute_url (string url, RequestID|void id,
   // Add protocol and host to local absolute URLs.
   if (has_prefix (url, "/")) {
     if(id) {
-      url = id->url_base() + url[1..];
+      Standards.URI uri = Standards.URI(id->url_base());
+
+      // Handle proxies
+      string xf_proto = id->request_headers["x-forwarded-proto"];
+      string xf_host = id->request_headers["x-forwarded-host"];
+
+      if (xf_proto && xf_host) {
+	uri = Standards.URI(xf_proto + "://" + xf_host + uri->path);
+      }
+      else if (xf_host) {
+	uri = Standards.URI(uri->scheme + "://" + xf_host + uri->path);
+      }
+      else if (xf_proto) {
+	uri = Standards.URI(xf_proto + "://" + uri->host + ":" + uri->port + uri->path);
+      }
+
+      url = (string)uri + url[1..];
       if (!prestates) prestates = id->prestate;
     }
     else {
@@ -1758,6 +1774,16 @@ mapping build_env_vars(string f, RequestID id, string path_info)
   new["SERVER_PORT"] = id->my_fd?
     ((id->my_fd->query_address(1)||"foo unknown")/" ")[1]: "Internal";
 
+  // Protect against execution of arbitrary code in broken bash.
+  foreach(new; string e; string v) {
+    if (has_prefix(v, "() {")) {
+      report_warning("ENV: Function definition in environment variable:\n"
+		     "ENV: %O=%O\n",
+		     e, v);
+      new[e] = " " + v;
+    }
+  }
+
   return new;
 }
 
@@ -1850,6 +1876,17 @@ mapping build_roxen_env_vars(RequestID id)
     else
       new["SUPPORTS"] = tmp;
   }
+
+  // Protect against execution of arbitrary code in broken bash.
+  foreach(new; string e; string v) {
+    if (has_prefix(v, "() {")) {
+      report_warning("ENV: Function definition in environment variable:\n"
+		     "ENV: %O=%O\n",
+		     e, v);
+      new[e] = " " + v;
+    }
+  }
+
   return new;
 }
 

@@ -1133,6 +1133,11 @@ class Patcher
 
 	array args = ({ patch_bin,
 			"-p0",
+#ifdef __NT__
+			// Make sure that patch doesn't mess around
+			// with EOL (cf [bug 7244]).
+			"--binary",
+#endif
 			// Reject file
 // 			"--global-reject-file=" +
 // 			   append_path(source_path, "rejects"),
@@ -2249,7 +2254,9 @@ class Patcher
 	} else if (path[0] == "pike") {
 	  string headerfile =
 	    Stdio.read_bytes(combine_path(server_path,
-					  "pike/include/version.h"));
+					  "pike/include/version.h")) ||
+	    Stdio.read_bytes(combine_path(server_path,
+					  "pike/include/pike/version.h"));
 	  if (headerfile) {
 	    /* Filter everything but cpp-directives. */
 	    headerfile = filter(headerfile/"\n", has_prefix, "#")*"\n" + "\n";

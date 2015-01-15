@@ -463,7 +463,7 @@ class Tag
     Context ctx = parser->context;
     object/*(Frame)HMM*/ frame;
     MAKE_FRAME (frame, ctx, parser, args, content);
-    if (!zero_type (frame->raw_tag_text))
+    if (object_variablep(frame, "raw_tag_text"))
       frame->raw_tag_text = parser->raw_tag_text();
     mixed result;
     EVAL_FRAME (frame, ctx, parser, parser->type, result);
@@ -478,7 +478,7 @@ class Tag
     Context ctx = parser->context;
     object/*(Frame)HMM*/ frame;
     MAKE_FRAME (frame, ctx, parser, args, content);
-    if (!zero_type (frame->raw_tag_text))
+    if (object_variablep (frame, "raw_tag_text"))
       frame->raw_tag_text = parser->current_input();
     mixed result;
     EVAL_FRAME (frame, ctx, parser, type, result);
@@ -503,7 +503,7 @@ class Tag
     Context ctx = parser->context;
     object/*(Frame)HMM*/ frame;
     MAKE_FRAME (frame, ctx, parser, 0, content);
-    if (!zero_type (frame->raw_tag_text))
+    if (object_variablep (frame, "raw_tag_text"))
       frame->raw_tag_text = parser->current_input();
     mixed result;
     EVAL_FRAME (frame, ctx, parser, type, result);
@@ -3658,7 +3658,7 @@ class Frame
   {
 #ifdef MODULE_DEBUG
 #define CHECK_RAW_TEXT							\
-    if (zero_type (this_object()->raw_tag_text))			\
+    if (!object_variablep (this, "raw_tag_text"))			\
       fatal_error ("The variable raw_tag_text must be defined.\n");	\
     if (!stringp (this_object()->raw_tag_text))				\
       fatal_error ("raw_tag_text must have a string value.\n");
@@ -4928,6 +4928,16 @@ class Frame
 		    this_object()->evaled_content->finish();
 		  if (unevaled_content) {
 		    unevaled_content->finish();
+
+		    if (PikeCompile _p_code_comp =
+			unevaled_content->p_code_comp)
+		      // This will clean up delayed_resolve_places in
+		      // the PikeCompile object, which may otherwise
+		      // contain references to things that have a
+		      // back-reference to this PCode object,
+		      // generating garbage due to a reference cycle.
+		      _p_code_comp->compile();
+
 		    in_content = unevaled_content;
 		    ctx->state_updated++;
 		    PCODE_UPDATE_MSG ("%O (frame %O): P-code update to %d "
@@ -9565,6 +9575,55 @@ class PCode
 	pos += 2;
       }
     }
+  }
+
+  array(mixed) collect_things_recur()
+  {
+    // Note: limit is on visited nodes, not resulting entries. Don't
+    // raise above 100k without considering the stack limit below.
+    constant limit = 10000;
+
+    ADT.Queue queue = ADT.Queue();
+    mapping(mixed:int) visited = ([]);
+
+    queue->write (this);
+
+    for (int i = 0; sizeof (queue) && i < limit; i++) {
+      mixed entry = queue->read();
+
+      if (functionp (entry) || visited[entry])
+	continue;
+
+      visited[entry] = 1;
+
+      if (arrayp (entry) || mappingp (entry) || multisetp (entry)) {
+	foreach (entry; mixed ind; mixed val) {
+	  if (!arrayp (entry))
+	    queue->write (ind);
+	  if (!multisetp (entry))
+	    queue->write (val);
+	}
+      } else if (objectp (entry)) {
+	if (entry->is_RXML_PCode)
+	  queue->write (entry->exec);
+      }
+    }
+
+#ifdef DEBUG
+    if (int size = sizeof (queue))
+      werror ("PCode.collect_things_recur: more than %d iterations in "
+	      "cache_count_memory (%d entries left).\n", limit, size);
+#endif
+
+    return indices(visited);
+  }
+
+  int cache_count_memory (int|mapping opts)
+  {
+    array(mixed) things = collect_things_recur();
+    // Note 100k entry stack limit (use 99k as an upper safety
+    // limit). Could split into multiple calls if necessary.
+    return Pike.count_memory (opts + ([ "lookahead": 5 ]), @things[..99000]);
   }
 }
 
